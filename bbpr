@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""
+bbpr — fetch Bitbucket Cloud PR for review (info, diff, comments, files).
+
+Usage:
+  bbpr <pr-url-or-number> [info|diff|comments|files|activity|all]
+  bbpr <pr-url-or-number>                       # = all
+  bbpr 605                                       # uses current git remote
+  bbpr https://bitbucket.org/ws/repo/pull-requests/605
+  bbpr setup                                     # configure credentials
+
+Auth:
+  Reads BITBUCKET_EMAIL + BITBUCKET_API_TOKEN from env, or from
+  ~/.config/bbpr/credentials (KEY=value, chmod 600 recommended).
+  Use an Atlassian API token (https://id.atlassian.com/manage-profile/security/api-tokens)
+  with scopes: read:pullrequest:bitbucket, read:repository:bitbucket, read:account.
+"""
+import getpass
+import os
+import re
+import sys
+import subprocess
+from pathlib import Path
+
+import requests
+
+API = "https://api.bitbucket.org/2.0"
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+def load_creds():
+    email = os.environ.get("BITBUCKET_EMAIL")
+    token = os.environ.get("BITBUCKET_API_TOKEN")
+    cfg = Path.home() / ".config" / "bbpr" / "credentials"
+    if cfg.exists():
+        data = {}
+        for line in cfg.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip().strip('"').strip("'")
+        email = email or data.get("BITBUCKET_EMAIL")
+        token = token or data.get("BITBUCKET_API_TOKEN")
+    if not email or not token:
+        sys.exit(
+            "error: credentials not found.\n"
+            "Run 'bbpr setup' to configure, or set BITBUCKET_EMAIL and\n"
+            "BITBUCKET_API_TOKEN as env vars or in ~/.config/bbpr/credentials"
+        )
+    return email, token
+
+
+def cmd_setup():
+    """Interactive credentials setup wizard."""
+    print("bbpr setup — Bitbucket credentials wizard")
+    print("==========================================")
+    print()
+    print("You'll need an Atlassian API token.")
+    print("Get one at: https://id.atlassian.com/manage-profile/security/api-tokens")
+    print()
+    print("Required scopes:")
+    print("  • read:pullrequest:bitbucket")
+    print("  • read:repository:bitbucket")
+    print("  • read:account")
+    print()
+
+    email = input("Atlassian email: ").strip()
+    if not email:
+        sys.exit("error: email cannot be empty")
+
+    token = getpass.getpass("API token (input hidden): ").strip()
+    if not token:
+        sys.exit("error: token cannot be empty")
+
+    print()
+    print("Verifying credentials...", end=" ", flush=True)
+    try:
+        r = requests.get(f"{API}/user", auth=(email, token), timeout=10)
+        if r.ok:
+            display_name = r.json().get("display_name", "unknown")
+            print(f"✓  (authenticated as {display_name})")
+        else:
+            print("✗")
+            sys.exit(
+                f"error: credentials rejected (HTTP {r.status_code}) — "
+                "check your email and token"
+            )
+    except requests.exceptions.RequestException as e:
+        print("✗")
+        sys.exit(f"error: network error — {e}")
+
+    cfg_dir = Path.home() / ".config" / "bbpr"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    cfg_file = cfg_dir / "credentials"
+    cfg_file.write_text(f"BITBUCKET_EMAIL={email}\nBITBUCKET_API_TOKEN={token}\n")
+    cfg_file.chmod(0o600)
+
+    print(f"✓  Credentials saved to {cfg_file}")
+    print()
+    print("Run 'bbpr <pr-url-or-number>' to review a PR.")
+
+
+# ── Parsing ───────────────────────────────────────────────────────────────────
+
+def parse_target(arg):
+    m = re.match(
+        r"https?://bitbucket\.org/([^/]+)/([^/]+)/pull-requests/(\d+)", arg
+    )
+    if m:
+        return m.group(1), m.group(2), int(m.group(3))
+    if arg.isdigit():
+        try:
+            url = subprocess.check_output(
+                ["git", "config", "--get", "remote.origin.url"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except subprocess.CalledProcessError:
+            sys.exit("error: not in a git repo — pass the full PR URL instead")
+        m = re.search(r"bitbucket\.org[:/]([^/]+)/([^/.]+)", url)
+        if not m:
+            sys.exit(f"error: can't parse workspace/repo from remote {url!r}")
+        return m.group(1), m.group(2), int(arg)
+    sys.exit(f"error: can't parse target {arg!r}")
+
+
+# ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+def get(session, url, **kwargs):
+    r = session.get(url, **kwargs)
+    if not r.ok:
+        sys.exit(f"error: HTTP {r.status_code} on {url}\n{r.text[:500]}")
+    return r
+
+
+def paginate(session, url):
+    while url:
+        data = get(session, url).json()
+        yield from data.get("values", [])
+        url = data.get("next")
+
+
+# ── Formatters ────────────────────────────────────────────────────────────────
+
+def fmt_info(pr):
+    print(f"# PR #{pr['id']}: {pr['title']}")
+    print(f"State:  {pr['state']}")
+    print(f"Author: {pr['author']['display_name']}")
+    print(f"Source: {pr['source']['branch']['name']}")
+    print(f"Target: {pr['destination']['branch']['name']}")
+    print(f"URL:    {pr['links']['html']['href']}")
+    reviewers = pr.get("reviewers") or []
+    if reviewers:
+        print("Reviewers: " + ", ".join(r["display_name"] for r in reviewers))
+    participants = [p for p in (pr.get("participants") or []) if p.get("approved")]
+    if participants:
+        print("Approvals: " + ", ".join(p["user"]["display_name"] for p in participants))
+    print()
+    print("## Description")
+    print(pr.get("description") or "(empty)")
+    print()
+
+
+def fmt_files(session, base):
+    print("## Files changed")
+    for d in paginate(session, f"{base}/diffstat?pagelen=100"):
+        status = d.get("status", "?")
+        path = (d.get("new") or d.get("old") or {}).get("path", "?")
+        lines = f"+{d.get('lines_added', 0)} -{d.get('lines_removed', 0)}"
+        print(f"  {status:10s} {lines:14s} {path}")
+    print()
+
+
+def fmt_comments(session, base):
+    print("## Comments")
+    any_c = False
+    for c in paginate(session, f"{base}/comments?pagelen=100"):
+        if c.get("deleted"):
+            continue
+        any_c = True
+        author = c["user"]["display_name"]
+        text = (c.get("content") or {}).get("raw", "")
+        inline = c.get("inline")
+        loc = ""
+        if inline:
+            path = inline.get("path", "?")
+            line = inline.get("to") or inline.get("from")
+            side = "new" if inline.get("to") else "old"
+            loc = f" — {path}:{line} ({side})" if line else f" — {path}"
+        parent = c.get("parent")
+        prefix = "  ↳ reply" if parent else "---"
+        print(f"{prefix} {author}{loc}")
+        print(text)
+        print()
+    if not any_c:
+        print("(no comments)\n")
+
+
+def fmt_activity(session, base):
+    print("## Activity")
+    for a in paginate(session, f"{base}/activity?pagelen=50"):
+        for kind in ("approval", "changes_requested", "update", "comment"):
+            if kind in a:
+                entry = a[kind]
+                user = (
+                    entry.get("user", {}).get("display_name")
+                    if isinstance(entry, dict) else None
+                ) or "?"
+                date = (
+                    entry.get("date") if isinstance(entry, dict) else None
+                ) or a.get("date", "")
+                print(f"  [{date}] {kind:18s} by {user}")
+                break
+    print()
+
+
+def fmt_diff(session, pr):
+    print("## Diff")
+    r = get(session, pr["links"]["diff"]["href"])
+    print(r.text)
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__.strip())
+        return
+
+    if sys.argv[1] == "setup":
+        cmd_setup()
+        return
+
+    target = sys.argv[1]
+    action = sys.argv[2] if len(sys.argv) > 2 else "all"
+    valid = {"info", "diff", "comments", "files", "activity", "all"}
+    if action not in valid:
+        sys.exit(f"error: action must be one of {sorted(valid)}")
+
+    workspace, repo, pr_id = parse_target(target)
+    email, token = load_creds()
+
+    session = requests.Session()
+    session.auth = (email, token)
+    session.headers["Accept"] = "application/json"
+
+    base = f"{API}/repositories/{workspace}/{repo}/pullrequests/{pr_id}"
+    pr = get(session, base).json()
+
+    if action in ("info", "all"):
+        fmt_info(pr)
+    if action in ("files", "all"):
+        fmt_files(session, base)
+    if action in ("comments", "all"):
+        fmt_comments(session, base)
+    if action in ("activity", "all"):
+        fmt_activity(session, base)
+    if action in ("diff", "all"):
+        fmt_diff(session, pr)
+
+
+if __name__ == "__main__":
+    main()

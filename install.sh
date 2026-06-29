@@ -9,10 +9,22 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+REMOTE="https://raw.githubusercontent.com/tejasnafde/bbpr/main"
 INSTALL_DIR="$HOME/.local/bitbucket-review"
 BIN_DIR="$HOME/.local/bin"
 VENV_PYTHON=""
+
+# Running via curl | bash — download assets to a temp dir
+if [[ ! -f "$SCRIPT_DIR/bbpr" ]]; then
+    TMP=$(mktemp -d)
+    trap "rm -rf '$TMP'" EXIT
+    echo "Downloading bbpr..."
+    for f in bbpr skill.md skill.mdc; do
+        curl -fsSL "$REMOTE/$f" -o "$TMP/$f" || { echo "error: download failed for $f"; exit 1; }
+    done
+    SCRIPT_DIR="$TMP"
+fi
 
 say()  { echo -e "\n${BOLD}$*${NC}"; }
 ok()   { echo -e "  ${GREEN}✓${NC}  $*"; }

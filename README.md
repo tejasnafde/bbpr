@@ -15,9 +15,13 @@ Works with Claude Code, Cursor, Codex CLI, OpenCode — any agent that can run s
 ## Install
 
 ```bash
-git clone git@github.com:YOUR-ORG/bbpr.git
-cd bbpr
-./install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/tejasnafde/bbpr/main/install.sh)
+```
+
+Or clone if you prefer:
+
+```bash
+git clone https://github.com/tejasnafde/bbpr.git && cd bbpr && ./install.sh
 ```
 
 The installer:

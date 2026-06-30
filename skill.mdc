@@ -71,4 +71,4 @@ This launches an interactive wizard that:
 3. Writes to `~/.config/bbpr/credentials` with `chmod 600`
 
 **Token creation:** https://id.atlassian.com/manage-profile/security/api-tokens
-**Required scopes:** `read:me`, `read:account`, `read:repository:bitbucket`, `read:pullrequest:bitbucket`
+Click **"Create API token with scopes"** (not the plain one). Required scopes: `read:user:bitbucket`, `read:pullrequest:bitbucket`

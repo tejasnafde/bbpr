@@ -12,8 +12,9 @@ Usage:
 Auth:
   Reads BITBUCKET_EMAIL + BITBUCKET_API_TOKEN from env, or from
   ~/.config/bbpr/credentials (KEY=value, chmod 600 recommended).
-  Use an Atlassian API token (https://id.atlassian.com/manage-profile/security/api-tokens)
-  with scopes: read:pullrequest:bitbucket, read:repository:bitbucket, read:account.
+  Use an Atlassian API token — click "Create API token with scopes" at
+  https://id.atlassian.com/manage-profile/security/api-tokens
+  Required scopes: read:user:bitbucket, read:pullrequest:bitbucket
 """
 import getpass
 import os
@@ -57,13 +58,13 @@ def cmd_setup():
     print("bbpr setup — Bitbucket credentials wizard")
     print("==========================================")
     print()
-    print("You'll need an Atlassian API token with Bitbucket scopes.")
-    print("Get one at: https://id.atlassian.com/manage-profile/security/api-tokens")
+    print("You'll need an Atlassian API token.")
+    print("→ https://id.atlassian.com/manage-profile/security/api-tokens")
     print()
-    print("Required scopes (select when creating the token):")
-    print("  • read:me")
-    print("  • read:account")
-    print("  • read:repository:bitbucket")
+    print("IMPORTANT: click 'Create API token with scopes' (not the plain one).")
+    print()
+    print("Required scopes:")
+    print("  • read:user:bitbucket")
     print("  • read:pullrequest:bitbucket")
     print()
 

@@ -32,13 +32,14 @@ The installer:
 
 ## Auth
 
-You'll need an **Atlassian API token** with Bitbucket scopes:
-- `read:me`
-- `read:account`
-- `read:repository:bitbucket`
-- `read:pullrequest:bitbucket`
+You'll need an **Atlassian API token**. Go to:
+https://id.atlassian.com/manage-profile/security/api-tokens
 
-**Create one at:** https://id.atlassian.com/manage-profile/security/api-tokens
+> **Important:** click **"Create API token with scopes"** — not the plain "Create API token". The plain one won't work.
+
+Required scopes (just 2):
+- `read:user:bitbucket`
+- `read:pullrequest:bitbucket`
 
 Then run the setup wizard:
 

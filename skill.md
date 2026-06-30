@@ -65,5 +65,5 @@ This launches an interactive wizard that:
 2. Verifies the credentials against the Bitbucket API before saving
 3. Writes to `~/.config/bbpr/credentials` with `chmod 600`
 
-**Token creation:** https://id.atlassian.com/manage-profile/security/api-tokens
-**Required scopes:** `read:pullrequest:bitbucket`, `read:repository:bitbucket`, `read:account`
+**App Password creation:** https://bitbucket.org/account/settings/app-passwords/
+**Required permissions:** Account: Read, Repositories: Read, Pull requests: Read

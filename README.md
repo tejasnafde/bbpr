@@ -32,12 +32,12 @@ The installer:
 
 ## Auth
 
-You'll need an Atlassian API token with these scopes:
-- `read:pullrequest:bitbucket`
-- `read:repository:bitbucket`
-- `read:account`
+You'll need a **Bitbucket App Password** (not an Atlassian API token — different thing):
+- Account: Read
+- Repositories: Read
+- Pull requests: Read
 
-**Create one at:** https://id.atlassian.com/manage-profile/security/api-tokens
+**Create one at:** https://bitbucket.org/account/settings/app-passwords/
 
 Then run the setup wizard:
 

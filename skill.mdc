@@ -36,6 +36,23 @@ bbpr <pr-url-or-number> [section]
 | `diff` | Full unified diff |
 | `all` | Everything above (default) |
 
+### Write actions
+
+Require the `write:pullrequest:bitbucket` token scope.
+
+```
+bbpr <target> comment "text"                    # general PR comment
+bbpr <target> comment "text" <path> <new-line>  # inline comment on a new-file line
+bbpr <target> approve
+bbpr <target> request-changes
+bbpr <target> unapprove
+```
+
+For inline comments, `<new-line>` is the line number **in the new version of the
+file** — read it straight off the `+`/context lines in the `diff` output (the
+`@@ -old,n +new,m @@` hunk header gives the starting new-file line). Don't check
+out the branch; the diff already carries the line numbers.
+
 ## Recommended review workflow
 
 1. `bbpr <target> info` — understand scope, author, description, who's reviewing
@@ -71,4 +88,4 @@ This launches an interactive wizard that:
 3. Writes to `~/.config/bbpr/credentials` with `chmod 600`
 
 **Token creation:** https://id.atlassian.com/manage-profile/security/api-tokens
-Click **"Create API token with scopes"** (not the plain one). Required scopes: `read:user:bitbucket`, `read:pullrequest:bitbucket`
+Click **"Create API token with scopes"** (not the plain one). Required scopes: `read:user:bitbucket`, `read:pullrequest:bitbucket`. Add `write:pullrequest:bitbucket` for the write actions above.

@@ -9,23 +9,54 @@ Usage:
   bbpr https://bitbucket.org/ws/repo/pull-requests/605
   bbpr setup                                     # configure credentials
 
+  # write actions (need write:pullrequest:bitbucket scope):
+  bbpr <t> comment "text"                        # general PR comment
+  bbpr <t> comment "text" <path> <new-line>      # inline comment on new-file line
+  bbpr <t> approve
+  bbpr <t> request-changes
+  bbpr <t> unapprove
+
 Auth:
   Reads BITBUCKET_EMAIL + BITBUCKET_API_TOKEN from env, or from
   ~/.config/bbpr/credentials (KEY=value, chmod 600 recommended).
   Use an Atlassian API token — click "Create API token with scopes" at
   https://id.atlassian.com/manage-profile/security/api-tokens
   Required scopes: read:user:bitbucket, read:pullrequest:bitbucket
+  For write actions also add: write:pullrequest:bitbucket
 """
 import getpass
 import os
 import re
 import sys
+import time
 import subprocess
+import urllib.request
 from pathlib import Path
 
 import requests
 
 API = "https://api.bitbucket.org/2.0"
+RAW_URL = "https://raw.githubusercontent.com/tejasnafde/bbpr/main/bbpr"
+STAMP = Path.home() / ".cache" / "bbpr-update-check"
+
+
+def maybe_self_update():
+    """Best-effort: replace the installed script with the latest, once a day."""
+    real = os.path.realpath(__file__)
+    if not real.startswith(os.path.expanduser("~/.local/bin")):
+        return  # ponytail: never self-mutate the dev/repo copy
+    try:
+        if STAMP.exists() and time.time() - STAMP.stat().st_mtime < 86400:
+            return
+        latest = urllib.request.urlopen(RAW_URL, timeout=3).read()
+        STAMP.parent.mkdir(parents=True, exist_ok=True)
+        STAMP.touch()  # stamp regardless, so a flaky net doesn't retry every run
+        if latest and latest != Path(real).read_bytes():
+            Path(real).write_bytes(latest)
+            print("bbpr updated — re-run your command.", file=sys.stderr)
+            sys.exit(0)
+    except Exception:
+        pass  # update is best-effort, never block the actual command
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -66,6 +97,7 @@ def cmd_setup():
     print("Required scopes:")
     print("  • read:user:bitbucket")
     print("  • read:pullrequest:bitbucket")
+    print("  • write:pullrequest:bitbucket   (for comment/approve/request-changes)")
     print()
 
     email = input("Atlassian email: ").strip()
@@ -132,6 +164,13 @@ def parse_target(arg):
 
 def get(session, url, **kwargs):
     r = session.get(url, **kwargs)
+    if not r.ok:
+        sys.exit(f"error: HTTP {r.status_code} on {url}\n{r.text[:500]}")
+    return r
+
+
+def post(session, url, json=None):
+    r = session.post(url, json=json)
     if not r.ok:
         sys.exit(f"error: HTTP {r.status_code} on {url}\n{r.text[:500]}")
     return r
@@ -224,7 +263,25 @@ def fmt_diff(session, pr):
     print(r.text)
 
 
+# ── Write actions ─────────────────────────────────────────────────────────────
+
+def do_comment(session, base, argv):
+    text = argv[3] if len(argv) > 3 else ""
+    if not text:
+        sys.exit('error: comment text required — bbpr <t> comment "text" [path line]')
+    body = {"content": {"raw": text}}
+    if len(argv) > 5:  # inline: path + new-file line
+        body["inline"] = {"path": argv[4], "to": int(argv[5])}
+    elif len(argv) == 5:
+        sys.exit("error: inline comment needs both <path> and <line>")
+    post(session, f"{base}/comments", json=body)
+    print("✓ comment posted")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
+
+WRITE = {"comment", "approve", "request-changes", "unapprove"}
+
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
@@ -235,9 +292,11 @@ def main():
         cmd_setup()
         return
 
+    maybe_self_update()
+
     target = sys.argv[1]
     action = sys.argv[2] if len(sys.argv) > 2 else "all"
-    valid = {"info", "diff", "comments", "files", "activity", "all"}
+    valid = {"info", "diff", "comments", "files", "activity", "all"} | WRITE
     if action not in valid:
         sys.exit(f"error: action must be one of {sorted(valid)}")
 
@@ -249,6 +308,18 @@ def main():
     session.headers["Accept"] = "application/json"
 
     base = f"{API}/repositories/{workspace}/{repo}/pullrequests/{pr_id}"
+
+    if action in WRITE:
+        if action == "comment":
+            do_comment(session, base, sys.argv)
+        elif action == "approve":
+            post(session, f"{base}/approve"); print("✓ approved")
+        elif action == "request-changes":
+            post(session, f"{base}/request-changes"); print("✓ changes requested")
+        elif action == "unapprove":
+            session.delete(f"{base}/approve"); print("✓ approval removed")
+        return
+
     pr = get(session, base).json()
 
     if action in ("info", "all"):

@@ -33,6 +33,10 @@ bbpr <pr-url-or-number> [section]
 
 ### Write actions
 
+**Post through `bbpr`, not the API directly.** Do not read
+`~/.config/bbpr/credentials` or call the Bitbucket REST API yourself — `bbpr`
+already holds the auth and handles inline anchoring. Just run the commands below.
+
 Require the `write:pullrequest:bitbucket` token scope.
 
 ```

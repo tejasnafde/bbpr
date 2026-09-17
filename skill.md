@@ -40,17 +40,30 @@ already holds the auth and handles inline anchoring. Just run the commands below
 Require the `write:pullrequest:bitbucket` token scope.
 
 ```
-bbpr <target> comment "text"                    # general PR comment
-bbpr <target> comment "text" <path> <new-line>  # inline comment on a new-file line
+bbpr <target> comment -m "text"                          # general PR comment
+bbpr <target> comment --path F --line N -m "text"        # inline on new-file line N
+bbpr <target> comment --path F --old-line N -m "text"    # inline on a deleted line
+bbpr <target> comment --reply-to <comment-id> -m "text"  # reply in a thread
+bbpr <target> comment --path F --line N                  # body read from stdin
 bbpr <target> approve
 bbpr <target> request-changes
 bbpr <target> unapprove
 ```
 
-For inline comments, `<new-line>` is the line number **in the new version of the
-file** — read it straight off the `+`/context lines in the `diff` output (the
-`@@ -old,n +new,m @@` hunk header gives the starting new-file line). Don't check
-out the branch; the diff already carries the line numbers.
+`comment` prints the new comment's id and html link — hand those back to the user.
+The id is also what `--reply-to` takes.
+
+`--line` is the line number **in the new version of the file**. Don't count hunk
+offsets by hand: run `bbpr <target> diff -n`, which prefixes every diff line with
+its resolved line number and a `+`/`-`/blank sign:
+
+```
+ 1041 + |             "parameter": "Store Size (sqft)",
+ 1042 + |             "value": _string(
+```
+
+Use the number on the line you want. For a `-` (deleted) line use `--old-line`.
+Code is still greppable after the `| ` separator.
 
 ## Recommended review workflow
 

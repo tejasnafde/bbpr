@@ -7,11 +7,16 @@ Usage:
   bbpr <pr-url-or-number>                       # = all
   bbpr 605                                       # uses current git remote
   bbpr https://bitbucket.org/ws/repo/pull-requests/605
+  bbpr 605 diff -n                               # diff with resolved line numbers
   bbpr setup                                     # configure credentials
 
   # write actions (need write:pullrequest:bitbucket scope):
-  bbpr <t> comment "text"                        # general PR comment
-  bbpr <t> comment "text" <path> <new-line>      # inline comment on new-file line
+  bbpr <t> comment -m "text"                     # general PR comment
+  bbpr <t> comment --path F --line N -m "text"   # inline on new-file line N
+  bbpr <t> comment --path F --old-line N -m "."  # inline on a deleted line
+  bbpr <t> comment --reply-to <id> -m "text"     # reply in a thread
+  bbpr <t> comment --path F --line N             # body read from stdin
+  bbpr <t> comment "text" [path] [new-line]      # legacy positional form
   bbpr <t> approve
   bbpr <t> request-changes
   bbpr <t> unapprove
@@ -24,6 +29,7 @@ Auth:
   Required scopes: read:user:bitbucket, read:pullrequest:bitbucket
   For write actions also add: write:pullrequest:bitbucket
 """
+import argparse
 import getpass
 import os
 import re
@@ -257,25 +263,79 @@ def fmt_activity(session, base):
     print()
 
 
-def fmt_diff(session, pr):
+HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def number_diff(text):
+    """Annotate each diff line with its resolved old/new file line number.
+
+    Gutter is "<num> <sign> | ", so the code is still greppable after "| ".
+    """
+    old = new = 0
+    out = []
+    for ln in text.splitlines():
+        m = HUNK.match(ln) if ln.startswith("@@") else None
+        if m:
+            old, new = int(m.group(1)), int(m.group(2))
+        if m or not ln.startswith((" ", "+", "-")) or ln.startswith(("+++", "---")):
+            out.append(f"{'':>5}   | {ln}")
+        elif ln.startswith("+"):
+            out.append(f"{new:>5} + | {ln[1:]}")
+            new += 1
+        elif ln.startswith("-"):
+            out.append(f"{old:>5} - | {ln[1:]}")
+            old += 1
+        else:
+            out.append(f"{new:>5}   | {ln[1:]}")
+            old += 1
+            new += 1
+    return "\n".join(out)
+
+
+def fmt_diff(session, pr, numbered=False):
     print("## Diff")
     r = get(session, pr["links"]["diff"]["href"])
-    print(r.text)
+    print(number_diff(r.text) if numbered else r.text)
 
 
 # ── Write actions ─────────────────────────────────────────────────────────────
 
 def do_comment(session, base, argv):
-    text = argv[3] if len(argv) > 3 else ""
+    p = argparse.ArgumentParser(prog="bbpr <pr> comment")
+    p.add_argument("pos", nargs="*", help="legacy: text [path] [new-line]")
+    p.add_argument("-m", "--message", help="comment body (default: stdin)")
+    p.add_argument("--path", help="file path for an inline comment")
+    p.add_argument("--line", type=int, help="new-file line number")
+    p.add_argument("--old-line", type=int, help="old-file line (deleted line)")
+    p.add_argument("--reply-to", type=int, help="parent comment id")
+    a = p.parse_args(argv[3:])
+
+    text = a.message or (a.pos[0] if a.pos else "")
+    if not text and not sys.stdin.isatty():
+        text = sys.stdin.read().strip()
     if not text:
-        sys.exit('error: comment text required — bbpr <t> comment "text" [path line]')
+        sys.exit('error: comment body required — pass -m "text" or pipe it on stdin')
+
+    path = a.path or (a.pos[1] if len(a.pos) > 1 else None)
+    line = a.line if a.line is not None else (
+        int(a.pos[2]) if len(a.pos) > 2 else None
+    )
+    if path and line is None and a.old_line is None:
+        sys.exit("error: --path needs --line (or --old-line)")
+    if not path and (line is not None or a.old_line is not None):
+        sys.exit("error: --line needs --path")
+
     body = {"content": {"raw": text}}
-    if len(argv) > 5:  # inline: path + new-file line
-        body["inline"] = {"path": argv[4], "to": int(argv[5])}
-    elif len(argv) == 5:
-        sys.exit("error: inline comment needs both <path> and <line>")
-    post(session, f"{base}/comments", json=body)
-    print("✓ comment posted")
+    if path:
+        body["inline"] = (
+            {"path": path, "to": line} if line is not None
+            else {"path": path, "from": a.old_line}
+        )
+    if a.reply_to:
+        body["parent"] = {"id": a.reply_to}
+
+    c = post(session, f"{base}/comments", json=body).json()
+    print(f"✓ comment {c['id']} — {c['links']['html']['href']}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -331,7 +391,7 @@ def main():
     if action in ("activity", "all"):
         fmt_activity(session, base)
     if action in ("diff", "all"):
-        fmt_diff(session, pr)
+        fmt_diff(session, pr, numbered=bool({"-n", "--line-numbers"} & set(sys.argv[3:])))
 
 
 if __name__ == "__main__":

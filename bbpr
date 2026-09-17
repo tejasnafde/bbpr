@@ -42,8 +42,31 @@ from pathlib import Path
 import requests
 
 API = "https://api.bitbucket.org/2.0"
-RAW_URL = "https://raw.githubusercontent.com/tejasnafde/bbpr/main/bbpr"
+REMOTE = "https://raw.githubusercontent.com/tejasnafde/bbpr/main"
+RAW_URL = f"{REMOTE}/bbpr"
 STAMP = Path.home() / ".cache" / "bbpr-update-check"
+SKILL_PATHS = Path.home() / ".config" / "bbpr" / "skill-paths"
+
+
+def update_skills():
+    """Refresh skill files install.sh recorded. Best-effort, never blocks."""
+    if not SKILL_PATHS.exists():
+        return
+    cache = {}
+    for line in SKILL_PATHS.read_text().splitlines():
+        dest = Path(line.strip()).expanduser()
+        if not line.strip() or not dest.exists():
+            continue
+        name = "skill.mdc" if dest.suffix == ".mdc" else "skill.md"
+        try:
+            if name not in cache:
+                cache[name] = urllib.request.urlopen(
+                    f"{REMOTE}/{name}", timeout=3
+                ).read()
+            if cache[name] and cache[name] != dest.read_bytes():
+                dest.write_bytes(cache[name])
+        except Exception:
+            pass
 
 
 def maybe_self_update():
@@ -57,6 +80,7 @@ def maybe_self_update():
         latest = urllib.request.urlopen(RAW_URL, timeout=3).read()
         STAMP.parent.mkdir(parents=True, exist_ok=True)
         STAMP.touch()  # stamp regardless, so a flaky net doesn't retry every run
+        update_skills()
         if latest and latest != Path(real).read_bytes():
             Path(real).write_bytes(latest)
             print("bbpr updated — re-run your command.", file=sys.stderr)

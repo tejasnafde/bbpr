@@ -13,6 +13,17 @@ Invoke `bbpr` whenever the user:
 - Asks about a pull request, diff, or code review on Bitbucket
 - Explicitly says "bbpr"
 
+### A bare PR URL is a review request
+
+A message that is just a Bitbucket PR URL — no other instruction — means
+"review this". Don't ask what to do with it, and don't reply with a summary of
+the description. Run the workflow below and come back with findings.
+
+Bare URL + a verb changes only the depth, not the tool:
+- "what changed in <url>" → `info` + `files`, summarize, stop.
+- "<url>" or "review <url>" → the full workflow.
+- "is <url> safe to merge" → full workflow, and end with a merge/no-merge call.
+
 ## Verify it's installed first
 
 ```
@@ -70,13 +81,18 @@ its resolved line number and a `+`/`-`/blank sign:
 Use the number on the line you want. For a `-` (deleted) line use `--old-line`.
 Code is still greppable after the `| ` separator.
 
-## Recommended review workflow
+## Review workflow
 
-1. `bbpr <target> info` — understand scope, author, description, who's reviewing
-2. `bbpr <target> files` — see what changed at a glance before diving in
-3. `bbpr <target> diff` — read the actual code changes
-4. `bbpr <target> comments` — check existing feedback before adding your own
-5. Synthesize: write a summary of changes, flag key concerns, suggest improvements
+1. `bbpr <target> info` — scope, author, description, who's reviewing
+2. `bbpr <target> files` — what changed, before diving in
+3. `bbpr <target> comments` — existing feedback, so you don't repeat it
+4. `bbpr <target> diff -n` — the actual code, with line numbers ready for step 6
+5. Read the repo around the diff. The diff shows what changed, not what it
+   breaks — open the callers and the tests for anything the diff touches.
+6. Report findings in chat, most severe first, each one as `path:line` +
+   what breaks. **Don't post to Bitbucket unless the user asks.** When they do
+   ask, use `bbpr <target> comment --path ... --line ...` — one comment per
+   finding, anchored on the offending line — and hand back the printed links.
 
 For large PRs, fetch sections individually to avoid overwhelming context.
 

@@ -106,11 +106,14 @@ directory. This teaches the agent:
 - How to synthesize a review from the output
 - What to tell you if credentials are missing
 
+Installed paths are recorded in `~/.config/bbpr/skill-paths`, so the daily
+self-update refreshes the skill file too — not just the script.
+
 Supported agent locations detected automatically:
 
 | Agent | Skill path |
 |-------|-----------|
-| Claude Code | `~/.claude/skills/bbpr.md` |
+| Claude Code | `~/.claude/skills/bbpr/SKILL.md` |
 | Cursor | `~/.cursor/rules/bbpr.mdc` |
 | OpenCode | `~/.config/opencode/bbpr.md` |
 | Codex CLI | `~/.codex/bbpr.md` |

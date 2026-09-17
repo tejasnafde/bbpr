@@ -6,6 +6,7 @@ Fetch Bitbucket Cloud pull requests for AI agent review.
 bbpr 605                                              # review PR from current repo
 bbpr https://bitbucket.org/ws/repo/pull-requests/605 # review any PR by URL
 bbpr 605 diff                                         # just the diff
+bbpr 605 diff -n                                      # diff with line numbers
 bbpr 605 comments                                     # just the comments
 bbpr setup                                            # configure credentials
 ```
@@ -77,6 +78,24 @@ bbpr <pr-url-or-number> [section]
 | `comments` | All review comments with file/line context |
 | `activity` | Approval/update timeline |
 | `all` | Everything (default) |
+
+`diff` takes `-n` / `--line-numbers` to prefix each line with its resolved
+old/new file line number — that's the number `comment --line` wants.
+
+### Write actions
+
+Need the `write:pullrequest:bitbucket` scope on the token.
+
+```
+bbpr 605 comment -m "text"                          # general PR comment
+bbpr 605 comment --path src/f.py --line 42 -m "..."  # inline on a new-file line
+bbpr 605 comment --path src/f.py --old-line 40 -m "..."  # inline on a deleted line
+bbpr 605 comment --reply-to 865329914 -m "..."      # reply in a thread
+bbpr 605 comment --path src/f.py --line 42          # body from stdin
+bbpr 605 approve | request-changes | unapprove
+```
+
+Prints the created comment's id and link.
 
 ## Agent skill file
 

@@ -1,3 +1,8 @@
+---
+name: bbpr
+description: Read and comment on Bitbucket Cloud pull requests via the bbpr CLI. Use when the user pastes a bitbucket.org pull-requests URL, says "review PR 123", asks about a Bitbucket PR/diff/review comments, or wants to post a review comment, approve, or request changes on Bitbucket.
+---
+
 # bbpr — Bitbucket PR review
 
 ## When to use

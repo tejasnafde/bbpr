@@ -130,16 +130,20 @@ echo ""
 n_skill_installed=0
 
 install_skill_to() {
-    local dir="$1" display="$2" ext="${3:-md}"
-    local dest="$dir/bbpr.$ext"
+    local dir="$1" display="$2" ext="${3:-md}" rel="${4:-bbpr.${3:-md}}"
+    local dest="$dir/$rel"
     local src="$SCRIPT_DIR/skill.$ext"
     [[ -f "$src" ]] || src="$SCRIPT_DIR/skill.md"   # fallback to .md if no variant
 
     read -r -p "    Install to $display ($dest)? [Y/n] " ans
     ans="${ans:-Y}"
     if [[ "$ans" =~ ^[Yy] ]]; then
-        if mkdir -p "$dir" 2>/dev/null && cp "$src" "$dest" 2>/dev/null; then
+        if mkdir -p "$(dirname "$dest")" 2>/dev/null && cp "$src" "$dest" 2>/dev/null; then
             ok "Installed → $dest"
+            # remember where, so bbpr's daily self-update refreshes it too
+            mkdir -p "$HOME/.config/bbpr"
+            grep -qxF "$dest" "$HOME/.config/bbpr/skill-paths" 2>/dev/null \
+                || echo "$dest" >> "$HOME/.config/bbpr/skill-paths"
             n_skill_installed=$((n_skill_installed + 1))
         else
             fail "Could not write to $dest"
@@ -149,8 +153,12 @@ install_skill_to() {
     fi
 }
 
-# Claude Code — proactive: create skills dir if ~/.claude exists
-[[ -d "$HOME/.claude" ]] && install_skill_to "$HOME/.claude/skills" "Claude Code" "md"
+# Claude Code — proactive: create skills dir if ~/.claude exists.
+# Must be skills/bbpr/SKILL.md with frontmatter; a bare bbpr.md is ignored.
+if [[ -d "$HOME/.claude" ]]; then
+    rm -f "$HOME/.claude/skills/bbpr.md"   # stale flat-file form, never loaded
+    install_skill_to "$HOME/.claude/skills" "Claude Code" "md" "bbpr/SKILL.md"
+fi
 
 # Cursor — only if rules dir already exists
 [[ -d "$HOME/.cursor/rules" ]] && install_skill_to "$HOME/.cursor/rules" "Cursor" "mdc"

@@ -8,6 +8,8 @@ Usage:
   bbpr 605                                       # uses current git remote
   bbpr https://bitbucket.org/ws/repo/pull-requests/605
   bbpr 605 diff -n                               # diff with resolved line numbers
+  bbpr 605 builds                                # CI build statuses on the PR
+  bbpr 605 status                                # one-line state fingerprint (for polling)
   bbpr setup                                     # configure credentials
 
   # write actions (need write:pullrequest:bitbucket scope):
@@ -20,6 +22,7 @@ Usage:
   bbpr <t> approve
   bbpr <t> request-changes
   bbpr <t> unapprove
+  bbpr <t> resolve <comment-id>                  # mark a comment thread resolved
 
 Auth:
   Reads BITBUCKET_EMAIL + BITBUCKET_API_TOKEN from env, or from
@@ -221,6 +224,7 @@ def fmt_info(pr):
     print(f"Author: {pr['author']['display_name']}")
     print(f"Source: {pr['source']['branch']['name']}")
     print(f"Target: {pr['destination']['branch']['name']}")
+    print(f"Head:   {pr['source']['commit']['hash']}")
     print(f"URL:    {pr['links']['html']['href']}")
     reviewers = pr.get("reviewers") or []
     if reviewers:
@@ -262,7 +266,8 @@ def fmt_comments(session, base):
             loc = f" — {path}:{line} ({side})" if line else f" — {path}"
         parent = c.get("parent")
         prefix = "  ↳ reply" if parent else "---"
-        print(f"{prefix} {author}{loc}")
+        resolved = " [resolved]" if c.get("resolution") else ""
+        print(f"{prefix} #{c['id']} {author}{loc}{resolved}")
         print(text)
         print()
     if not any_c:
@@ -285,6 +290,31 @@ def fmt_activity(session, base):
                 print(f"  [{date}] {kind:18s} by {user}")
                 break
     print()
+
+
+def fmt_builds(session, base):
+    print("## Builds")
+    builds = list(paginate(session, f"{base}/statuses?pagelen=100"))
+    for b in builds:
+        print(f"  {b['state']:11s} {b.get('name') or b['key']}  {b.get('url', '')}")
+    if not builds:
+        print("  (no builds)")
+    print()
+
+
+def status_line(pr, builds, comments):
+    """Stable one-line fingerprint: changes iff something worth waking up for changed."""
+    counts = {}
+    for b in builds:
+        counts[b["state"]] = counts.get(b["state"], 0) + 1
+    live = [c for c in comments if not c.get("deleted")]
+    unresolved = sum(1 for c in live if not c.get("parent") and not c.get("resolution"))
+    approvals = sum(1 for p in pr.get("participants") or [] if p.get("approved"))
+    return (
+        f"state={pr['state']} head={pr['source']['commit']['hash'][:12]} "
+        f"builds={','.join(f'{k}:{v}' for k, v in sorted(counts.items())) or 'none'} "
+        f"comments={len(live)} unresolved={unresolved} approvals={approvals}"
+    )
 
 
 HUNK = re.compile(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
@@ -364,7 +394,7 @@ def do_comment(session, base, argv):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-WRITE = {"comment", "approve", "request-changes", "unapprove"}
+WRITE = {"comment", "approve", "request-changes", "unapprove", "resolve"}
 
 
 def main():
@@ -380,7 +410,7 @@ def main():
 
     target = sys.argv[1]
     action = sys.argv[2] if len(sys.argv) > 2 else "all"
-    valid = {"info", "diff", "comments", "files", "activity", "all"} | WRITE
+    valid = {"info", "diff", "comments", "files", "activity", "builds", "status", "all"} | WRITE
     if action not in valid:
         sys.exit(f"error: action must be one of {sorted(valid)}")
 
@@ -400,11 +430,24 @@ def main():
             post(session, f"{base}/approve"); print("✓ approved")
         elif action == "request-changes":
             post(session, f"{base}/request-changes"); print("✓ changes requested")
+        elif action == "resolve":
+            if len(sys.argv) < 4 or not sys.argv[3].isdigit():
+                sys.exit("error: usage: bbpr <pr> resolve <comment-id>")
+            post(session, f"{base}/comments/{sys.argv[3]}/resolve")
+            print(f"✓ comment {sys.argv[3]} resolved")
         elif action == "unapprove":
             session.delete(f"{base}/approve"); print("✓ approval removed")
         return
 
     pr = get(session, base).json()
+
+    if action == "status":
+        print(status_line(
+            pr,
+            list(paginate(session, f"{base}/statuses?pagelen=100")),
+            list(paginate(session, f"{base}/comments?pagelen=100")),
+        ))
+        return
 
     if action in ("info", "all"):
         fmt_info(pr)
@@ -412,6 +455,8 @@ def main():
         fmt_files(session, base)
     if action in ("comments", "all"):
         fmt_comments(session, base)
+    if action in ("builds", "all"):
+        fmt_builds(session, base)
     if action in ("activity", "all"):
         fmt_activity(session, base)
     if action in ("diff", "all"):

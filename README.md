@@ -77,6 +77,8 @@ bbpr <pr-url-or-number> [section]
 | `diff` | Full unified diff |
 | `comments` | All review comments with file/line context |
 | `activity` | Approval/update timeline |
+| `builds` | CI build statuses on the PR |
+| `status` | One-line fingerprint for polling (state, head, builds, comment counts) |
 | `all` | Everything (default) |
 
 `diff` takes `-n` / `--line-numbers` to prefix each line with its resolved
@@ -93,6 +95,7 @@ bbpr 605 comment --path src/f.py --old-line 40 -m "..."  # inline on a deleted l
 bbpr 605 comment --reply-to 865329914 -m "..."      # reply in a thread
 bbpr 605 comment --path src/f.py --line 42          # body from stdin
 bbpr 605 approve | request-changes | unapprove
+bbpr 605 resolve 865329914                          # resolve a comment thread
 ```
 
 Prints the created comment's id and link.

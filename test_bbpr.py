@@ -33,3 +33,14 @@ EXPECT = """        | diff --git a/f.py b/f.py
 got = bbpr.number_diff(DIFF)
 assert got == EXPECT, "\n--- got ---\n%s\n--- want ---\n%s" % (got, EXPECT)
 print("ok")
+
+PR = {"state": "OPEN", "source": {"commit": {"hash": "abcdef1234567890"}},
+      "participants": [{"approved": True}, {"approved": False}]}
+BUILDS = [{"state": "SUCCESSFUL"}, {"state": "FAILED"}, {"state": "SUCCESSFUL"}]
+COMMENTS = [{"id": 1}, {"id": 2, "resolution": {"type": "resolved"}},
+            {"id": 3, "parent": {"id": 1}}, {"id": 4, "deleted": True}]
+got = bbpr.status_line(PR, BUILDS, COMMENTS)
+want = "state=OPEN head=abcdef123456 builds=FAILED:1,SUCCESSFUL:2 comments=3 unresolved=1 approvals=1"
+assert got == want, got
+assert bbpr.status_line(PR, [], []).split()[2] == "builds=none"
+print("ok")

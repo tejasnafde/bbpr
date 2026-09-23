@@ -45,6 +45,8 @@ bbpr <pr-url-or-number> [section]
 | `comments` | All review comments (inline and general) with file/line context |
 | `activity` | Timeline of approvals, change requests, and updates |
 | `diff` | Full unified diff |
+| `builds` | CI build statuses (state, name, link) |
+| `status` | One-line fingerprint: state, head sha, build counts, comment/unresolved counts |
 | `all` | Everything above (default) |
 
 ### Write actions
@@ -64,6 +66,7 @@ bbpr <target> comment --path F --line N                  # body read from stdin
 bbpr <target> approve
 bbpr <target> request-changes
 bbpr <target> unapprove
+bbpr <target> resolve <comment-id>                       # resolve a comment thread
 ```
 
 `comment` prints the new comment's id and html link — hand those back to the user.
